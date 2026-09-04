@@ -1,4 +1,4 @@
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
 from ..api import DBCaseConfig, DBConfig, MetricType
 
@@ -9,6 +9,7 @@ class S3VectorsConfig(DBConfig):
     secret_access_key: SecretStr
     bucket_name: str
     index_name: str = "vdbbench-index"
+    num_shards: int = Field(default=1, ge=1, le=10000)
 
     def to_dict(self) -> dict:
         return {
@@ -17,6 +18,7 @@ class S3VectorsConfig(DBConfig):
             "secret_access_key": self.secret_access_key.get_secret_value() if self.secret_access_key else "",
             "bucket_name": self.bucket_name,
             "index_name": self.index_name,
+            "num_shards": self.num_shards,
         }
 
 

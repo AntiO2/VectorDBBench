@@ -26,6 +26,16 @@ class S3VectorsTypedDict(TypedDict):
 
     bucket: Annotated[str, click.option("--bucket", type=str, help="S3 bucket name", required=True)]
     index: Annotated[str, click.option("--index", type=str, help="Unique vector index name", default="vdbbench-index")]
+    num_shards: Annotated[
+        int,
+        click.option(
+            "--num-shards",
+            type=click.IntRange(min=1, max=10000),
+            help="Number of S3 Vector indexes used as shards. Default: 1.",
+            default=1,
+            show_default=True,
+        ),
+    ]
 
     metric: Annotated[
         str,
@@ -55,6 +65,7 @@ def S3Vectors(**parameters: Unpack[S3VectorsIndexTypedDict]):
             secret_access_key=SecretStr(parameters["secret_access_key"]),
             bucket_name=parameters["bucket"],
             index_name=parameters["index"] if parameters["index"] else "vdbbench-index",
+            num_shards=parameters["num_shards"],
         ),
         db_case_config=S3VectorsIndexConfig(
             metric_type=(
