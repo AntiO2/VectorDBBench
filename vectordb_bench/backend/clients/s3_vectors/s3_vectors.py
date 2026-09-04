@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any
 
@@ -176,11 +176,13 @@ class S3Vectors(VectorDB):
         """Insert embeddings into S3 Vectors. Call self.init() first."""
         assert self.client is not None
         assert len(embeddings) == len(metadata)
+        if self.with_scalar_labels and labels_data is None:
+            msg = "labels_data is required when with_scalar_labels is enabled"
+            raise ValueError(msg)
 
         if self.num_shards == 1:
             return self._insert_single_index(embeddings, metadata, labels_data)
 
-        assert self._executor is not None
         shard_vectors: list[list[dict]] = [[] for _ in range(self.num_shards)]
         for i in range(len(embeddings)):
             # Stripe 500-vector key blocks so sequential benchmark batches stay full-sized PutVectors requests.
@@ -198,23 +200,17 @@ class S3Vectors(VectorDB):
                     )
                 )
 
-        futures = {
-            self._executor.submit(self._put_vectors, index_name, vectors): len(vectors)
-            for index_name, vectors in requests
-        }
         insert_count = 0
-        first_error = None
-        for future in as_completed(futures):
-            try:
-                future.result()
-                insert_count += futures[future]
-            except Exception as e:
-                if first_error is None:
-                    first_error = e
-
-        if first_error is not None:
-            log.info(f"Failed to insert data: {first_error}")
-            return insert_count, first_error
+        try:
+            # ConcurrentInsertRunner already parallelizes insert_embeddings calls.
+            # Keep requests inside one call sequential to avoid capping aggregate
+            # load concurrency at the shard-query executor size.
+            for index_name, vectors in requests:
+                self._put_vectors(index_name, vectors)
+                insert_count += len(vectors)
+        except Exception as e:
+            log.info(f"Failed to insert data: {e}")
+            return insert_count, e
         return insert_count, None
 
     def _insert_single_index(
